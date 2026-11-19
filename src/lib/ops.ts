@@ -106,3 +106,11 @@ export async function umlagern(eintragId: number, menge: number, ziel: Ziel, not
     })
   })
 }
+
+export async function artikelLoeschen(artikelId: number) {
+  await db.transaction('rw', db.artikel, db.eintraege, db.bewegungen, async () => {
+    await db.eintraege.where('artikelId').equals(artikelId).delete()
+    await db.bewegungen.where('artikelId').equals(artikelId).delete()
+    await db.artikel.delete(artikelId)
+  })
+}

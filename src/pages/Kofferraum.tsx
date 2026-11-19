@@ -1,3 +1,4 @@
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, vergleiche, type Eintrag } from '../db'
@@ -8,6 +9,8 @@ import EintragZeile from '../components/EintragZeile'
 export default function Kofferraum() {
   const s = useStammdaten()
   const eintraege = useLiveQuery(() => db.eintraege.toArray())
+  const [laeuft, setLaeuft] = useState(false)
+  const sperre = useRef(false)
   if (!s || !eintraege) return null
   const kIds = kofferraumIds(s)
   const kofferraum = s.orte.find((o) => o.typ === 'kofferraum')
@@ -23,7 +26,17 @@ export default function Kofferraum() {
   const imKofferraum = eintraege.filter((e) => kIds.has(e.ortId))
     .sort((a, b) => vergleiche(s.art.get(a.artikelId)?.name ?? '', s.art.get(b.artikelId)?.name ?? ''))
 
-  const einpacken = (e: Eintrag, menge: number) => umlagern(e.id, menge, { ortId: kofferraum.id, projektId: e.projektId }, 'Kofferraum aufgefüllt')
+  async function einpacken(e: Eintrag, menge: number) {
+    if (sperre.current) return
+    sperre.current = true
+    setLaeuft(true)
+    try {
+      await umlagern(e.id, menge, { ortId: kofferraum!.id, projektId: e.projektId }, 'Kofferraum aufgefüllt')
+    } finally {
+      sperre.current = false
+      setLaeuft(false)
+    }
+  }
 
   return (
     <>
@@ -50,7 +63,7 @@ export default function Kofferraum() {
                 {nachschub.map((e) => (
                   <li key={e.id}>
                     <span>{ortText(s, e)} {e.seriennummer ? <code>{e.seriennummer}</code> : `(${e.menge} Stk.)`}</span>
-                    <button type="button" onClick={() => einpacken(e, Math.min(fehlt, e.menge))}>
+                    <button type="button" disabled={laeuft} onClick={() => einpacken(e, Math.min(fehlt, e.menge))}>
                       {e.seriennummer ? 'Eingepackt' : `${Math.min(fehlt, e.menge)} eingepackt`}
                     </button>
                   </li>

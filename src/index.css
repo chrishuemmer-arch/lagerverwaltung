@@ -28,6 +28,8 @@ input, select { width: 100%; }
 button, .knopf { cursor: pointer; white-space: nowrap; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 button.primaer { background: var(--blau); color: #fff; border-color: var(--blau); }
 button.gross { width: 100%; padding: 14px; font-weight: 600; }
+button.gefahr { color: #c62828; border-color: #c62828; margin-top: 16px; }
+button:disabled { opacity: .5; cursor: default; }
 button.link { border: none; background: none; padding: 0; min-height: 0; color: var(--blau); text-decoration: underline; font-size: inherit; }
 label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: var(--grau); flex: 1; }
 label.check { flex-direction: row; align-items: center; gap: 10px; color: var(--text); }

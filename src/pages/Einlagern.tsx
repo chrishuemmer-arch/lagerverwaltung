@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { db, normSN, vergleiche } from '../db'
 import { useStammdaten } from '../lib/hooks'
@@ -26,6 +26,8 @@ export default function Einlagern() {
   const [serie, setSerie] = useState(false)
   const [scannen, setScannen] = useState(false)
   const [meldung, setMeldung] = useState<{ ok: boolean; text: string }>()
+  const [speichert, setSpeichert] = useState(false)
+  const sperre = useRef(false)
 
   if (!s) return null
   const effOrt: OrtWert = ort.ortId ? ort : startPlatz && s.platz.get(startPlatz)
@@ -37,13 +39,16 @@ export default function Einlagern() {
 
   async function speichern(ev: FormEvent) {
     ev.preventDefault()
+    if (sperre.current) return
+    sperre.current = true
+    setSpeichert(true)
     setMeldung(undefined)
     try {
       let aid = artikelId
       let snPflicht = mitSN
       if (aid === NEU) {
         const name = neuName.trim()
-        const doppelt = s!.artikel.find((a) => a.name.toLowerCase() === name.toLowerCase())
+        const doppelt = await db.artikel.filter((a) => a.name.toLowerCase() === name.toLowerCase()).first()
         aid = doppelt?.id ?? await db.artikel.add({
           name, kategorie: neuKategorie.trim() || undefined, mitSeriennummer: neuMitSN, kofferraumMin: 0,
         })
@@ -55,8 +60,8 @@ export default function Einlagern() {
         artikelId: aid, ortId: effOrt.ortId, platzId: effOrt.platzId, projektId,
         seriennummer: snPflicht ? sn : undefined, menge: snPflicht ? 1 : menge, notiz,
       })
-      if (serie) {
-        setMeldung({ ok: true, text: mitSN ? `${normSN(sn)} gespeichert. Nächste Seriennummer:` : 'Gespeichert.' })
+      if (serie && snPflicht) {
+        setMeldung({ ok: true, text: `${normSN(sn)} gespeichert. Nächste Seriennummer:` })
         setSn('')
         setOrt(effOrt)
       } else {
@@ -64,6 +69,9 @@ export default function Einlagern() {
       }
     } catch (e) {
       setMeldung({ ok: false, text: (e as Error).message })
+    } finally {
+      sperre.current = false
+      setSpeichert(false)
     }
   }
 
@@ -108,12 +116,14 @@ export default function Einlagern() {
       <OrtWahl s={s} wert={effOrt} onChange={setOrt} />
       <ProjektWahl s={s} wert={projektId} onChange={setProjektId} />
       <label>Notiz<input value={notiz} onChange={(e) => setNotiz(e.target.value)} placeholder="optional" /></label>
-      <label className="check">
-        <input type="checkbox" checked={serie} onChange={(e) => setSerie(e.target.checked)} />
-        Danach weitere erfassen (gleicher Artikel, Platz und Projekt)
-      </label>
+      {mitSN && (
+        <label className="check">
+          <input type="checkbox" checked={serie} onChange={(e) => setSerie(e.target.checked)} />
+          Danach weitere Seriennummern erfassen (gleicher Artikel, Platz und Projekt)
+        </label>
+      )}
       {meldung && <p className={meldung.ok ? 'ok' : 'fehler'}>{meldung.text}</p>}
-      <button type="submit" className="primaer gross">Einlagern</button>
+      <button type="submit" className="primaer gross" disabled={speichert}>Einlagern</button>
       {scannen && (
         <Suspense fallback={null}><Scanner titel="Seriennummer scannen" onClose={() => setScannen(false)} onResult={(t) => { setSn(t); setScannen(false) }} /></Suspense>
       )}

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Bewegung } from '../db'
@@ -23,16 +23,24 @@ export default function EintragDetail() {
   const [zielProjekt, setZielProjekt] = useState<number | null>(null)
   const [notiz, setNotiz] = useState('')
   const [notizBearbeiten, setNotizBearbeiten] = useState<string>()
+  const [laeuft, setLaeuft] = useState(false)
+  const sperre = useRef(false)
 
   if (!s || e === undefined) return e === undefined && s ? <p className="leer">Eintrag nicht (mehr) vorhanden. <Link to="/">Zum Bestand</Link></p> : null
   const art = s.art.get(e.artikelId)
   const projekt = e.projektId != null ? s.projekt.get(e.projektId) : undefined
 
   async function ausfuehren() {
+    if (sperre.current) return
+    sperre.current = true
+    setLaeuft(true)
     try {
       await bewegen()
     } catch (x) {
       alert((x as Error).message)
+    } finally {
+      sperre.current = false
+      setLaeuft(false)
     }
   }
 
@@ -97,7 +105,7 @@ export default function EintragDetail() {
           )}
           <label>Notiz<input value={notiz} onChange={(x) => setNotiz(x.target.value)} placeholder={modus === 'entnehmen' ? 'z. B. verbaut bei Kunde X' : 'optional'} /></label>
           <div className="zeile">
-            <button type="button" className="primaer" onClick={ausfuehren}>Bestätigen</button>
+            <button type="button" className="primaer" onClick={ausfuehren} disabled={laeuft}>Bestätigen</button>
             <button type="button" onClick={() => setModus(undefined)}>Abbrechen</button>
           </div>
         </div>
