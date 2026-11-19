@@ -29,6 +29,14 @@ export default function EintragDetail() {
   const projekt = e.projektId != null ? s.projekt.get(e.projektId) : undefined
 
   async function ausfuehren() {
+    try {
+      await bewegen()
+    } catch (x) {
+      alert((x as Error).message)
+    }
+  }
+
+  async function bewegen() {
     if (modus === 'entnehmen') {
       const rest = e!.menge - menge
       await entnehmen(e!.id, menge, notiz)

@@ -1,5 +1,9 @@
 import { db, normSN, type Eintrag } from '../db'
 
+function pruefeMenge(menge: number) {
+  if (!Number.isInteger(menge) || menge < 1) throw new Error('Menge muss eine ganze Zahl ab 1 sein')
+}
+
 interface Ziel {
   ortId: number
   platzId?: number
@@ -15,7 +19,9 @@ export async function einlagern(daten: {
   return db.transaction('rw', db.eintraege, db.bewegungen, db.artikel, async () => {
     const artikel = await db.artikel.get(daten.artikelId)
     if (!artikel) throw new Error('Artikel nicht gefunden')
-    const sn = daten.seriennummer ? normSN(daten.seriennummer) : undefined
+    const sn = daten.seriennummer ? normSN(daten.seriennummer) || undefined : undefined
+    if (artikel.mitSeriennummer && !sn) throw new Error('Seriennummer fehlt')
+    if (!sn) pruefeMenge(daten.menge)
     let id: number
     if (sn) {
       const vorhanden = await db.eintraege.where('seriennummer').equals(sn).first()
@@ -54,6 +60,7 @@ async function findeGleichen(artikelId: number, z: Ziel, ausser?: number): Promi
 }
 
 export async function entnehmen(eintragId: number, menge: number, notiz?: string) {
+  pruefeMenge(menge)
   await db.transaction('rw', db.eintraege, db.bewegungen, async () => {
     const e = await db.eintraege.get(eintragId)
     if (!e) throw new Error('Eintrag nicht gefunden')
@@ -68,6 +75,7 @@ export async function entnehmen(eintragId: number, menge: number, notiz?: string
 }
 
 export async function umlagern(eintragId: number, menge: number, ziel: Ziel, notiz?: string) {
+  pruefeMenge(menge)
   await db.transaction('rw', db.eintraege, db.bewegungen, async () => {
     const e = await db.eintraege.get(eintragId)
     if (!e) throw new Error('Eintrag nicht gefunden')
