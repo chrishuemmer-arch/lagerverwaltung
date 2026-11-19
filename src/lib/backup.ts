@@ -31,14 +31,14 @@ export async function exportieren(): Promise<void> {
 
 export async function importieren(datei: File): Promise<void> {
   const inhalt = JSON.parse(await datei.text())
-  if (inhalt?.format !== FORMAT || typeof inhalt.daten !== 'object') {
-    throw new Error('Das ist keine Lagerverwaltung-Backup-Datei')
+  if (inhalt?.format !== FORMAT || typeof inhalt.daten !== 'object' || !inhalt.daten
+    || !TABELLEN.every((t) => Array.isArray(inhalt.daten[t]))) {
+    throw new Error('Das ist keine (vollständige) Lagerverwaltung-Backup-Datei')
   }
   await db.transaction('rw', TABELLEN.map((t) => db.table(t)), async () => {
     for (const t of TABELLEN) {
       await db.table(t).clear()
-      const zeilen = inhalt.daten[t]
-      if (Array.isArray(zeilen)) await db.table(t).bulkAdd(zeilen)
+      await db.table(t).bulkAdd(inhalt.daten[t])
     }
   })
 }
