@@ -40,18 +40,20 @@ export default function Einlagern() {
     setMeldung(undefined)
     try {
       let aid = artikelId
+      let snPflicht = mitSN
       if (aid === NEU) {
         const name = neuName.trim()
         const doppelt = s!.artikel.find((a) => a.name.toLowerCase() === name.toLowerCase())
         aid = doppelt?.id ?? await db.artikel.add({
           name, kategorie: neuKategorie.trim() || undefined, mitSeriennummer: neuMitSN, kofferraumMin: 0,
         })
+        if (doppelt) snPflicht = doppelt.mitSeriennummer
         setArtikelId(aid)
       }
       if (!aid || !effOrt.ortId) return
       const id = await einlagern({
         artikelId: aid, ortId: effOrt.ortId, platzId: effOrt.platzId, projektId,
-        seriennummer: mitSN ? sn : undefined, menge: mitSN ? 1 : menge, notiz,
+        seriennummer: snPflicht ? sn : undefined, menge: snPflicht ? 1 : menge, notiz,
       })
       if (serie) {
         setMeldung({ ok: true, text: mitSN ? `${normSN(sn)} gespeichert. Nächste Seriennummer:` : 'Gespeichert.' })
