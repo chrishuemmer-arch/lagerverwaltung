@@ -56,12 +56,12 @@ function OrtKarte({ ort }: { ort: Ort }) {
   async function anlegen(ev: FormEvent) {
     ev.preventDefault()
     const r = regal.trim()
-    const vorhanden = new Set(plaetze!.filter((p) => p.regal === r).map((p) => p.nummer))
+    const bisher = plaetze!.filter((p) => p.regal === r)
+    const vorhanden = new Set(bisher.map((p) => Number(p.nummer)))
     const neue = []
-    const breite = String(bis).length
+    const breite = Math.max(String(bis).length, ...bisher.map((p) => p.nummer.length))
     for (let n = von; n <= bis; n++) {
-      const nummer = String(n).padStart(breite, '0')
-      if (!vorhanden.has(nummer)) neue.push({ ortId: ort.id, regal: r, nummer })
+      if (!vorhanden.has(n)) neue.push({ ortId: ort.id, regal: r, nummer: String(n).padStart(breite, '0') })
     }
     await db.plaetze.bulkAdd(neue)
     setRegal('')
