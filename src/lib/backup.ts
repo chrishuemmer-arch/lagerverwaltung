@@ -5,7 +5,9 @@ const LETZTES_BACKUP = 'letztesBackup'
 
 export async function exportieren(): Promise<void> {
   const daten: Record<string, unknown[]> = {}
-  for (const t of TABELLEN) daten[t] = await db.table(t).toArray()
+  await db.transaction('r', TABELLEN.map((t) => db.table(t)), async () => {
+    for (const t of TABELLEN) daten[t] = await db.table(t).toArray()
+  })
   const json = JSON.stringify({ format: FORMAT, version: 1, erstellt: new Date().toISOString(), daten }, null, 1)
   const datum = new Date().toISOString().slice(0, 10)
   const datei = new File([json], `lager-backup-${datum}.json`, { type: 'application/json' })
