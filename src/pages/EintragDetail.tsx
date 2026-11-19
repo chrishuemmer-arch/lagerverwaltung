@@ -42,7 +42,7 @@ export default function EintragDetail() {
       await entnehmen(e!.id, menge, notiz)
       if (rest <= 0) navigate('/', { replace: true })
     } else if (modus === 'umlagern' && ziel.ortId) {
-      await umlagern(e!.id, menge, { ...ziel, ortId: ziel.ortId, projektId: zielProjekt ?? e!.projektId }, notiz)
+      await umlagern(e!.id, menge, { ...ziel, ortId: ziel.ortId, projektId: zielProjekt === null ? e!.projektId : zielProjekt || undefined }, notiz)
       if (!e!.seriennummer && menge < e!.menge) setModus(undefined)
       else if (!(await db.eintraege.get(e!.id))) navigate('/', { replace: true })
     }
