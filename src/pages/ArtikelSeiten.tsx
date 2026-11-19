@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, vergleiche, type Artikel } from '../db'
 import { useStammdaten } from '../lib/hooks'
+import { artikelLoeschen } from '../lib/ops'
 import EintragZeile from '../components/EintragZeile'
 
 export function ArtikelListe() {
@@ -79,9 +80,15 @@ export function ArtikelDetail() {
       <p><Link to={`/einlagern?artikel=${id}`}>+ Einlagern</Link></p>
       <h2>Bestand ({eintraege.reduce((n, e) => n + e.menge, 0)} Stk.)</h2>
       <ul className="liste">{eintraege.map((e) => <EintragZeile key={e.id} s={s} e={e} />)}</ul>
-      {!eintraege.length && (
-        <button type="button" onClick={async () => { if (confirm('Artikel löschen?')) { await db.artikel.delete(id); navigate('/artikel', { replace: true }) } }}>Artikel löschen</button>
-      )}
+      <button type="button" className="gefahr" onClick={async () => {
+        const stk = eintraege.reduce((n, e) => n + e.menge, 0)
+        const frage = stk
+          ? `„${a.name}“ komplett löschen? Damit werden auch ${stk} Stk. aus dem Bestand und der Verlauf gelöscht.`
+          : `„${a.name}“ löschen?`
+        if (!confirm(frage)) return
+        await artikelLoeschen(id)
+        navigate('/artikel', { replace: true })
+      }}>Artikel löschen</button>
     </>
   )
 }
