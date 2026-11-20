@@ -10,9 +10,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Lagerverwaltung',
-        short_name: 'Lager',
-        description: 'Lager, Projekte und Kofferraum-Vorrat verwalten',
+        name: 'FeliStore',
+        short_name: 'FeliStore',
+        description: 'FeliStore – Lagerverwaltung von Feline Systems Ltd.',
         lang: 'de',
         theme_color: '#1f4e79',
         background_color: '#f4f6f8',

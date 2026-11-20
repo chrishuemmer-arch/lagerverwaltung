@@ -1,8 +1,9 @@
 import { lazy, Suspense, useRef, useState, type FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { db, normSN, vergleiche } from '../db'
-import { useStammdaten } from '../lib/hooks'
-import { einlagern } from '../lib/ops'
+import { normSN, vergleiche } from '../db'
+import { imAktuellen, meineOrte, useStammdaten } from '../lib/hooks'
+import { artikelAnlegen, einlagern } from '../lib/ops'
+import { Wechseln } from '../components/LagerWahl'
 import OrtWahl, { ProjektWahl, type OrtWert } from '../components/OrtWahl'
 
 const Scanner = lazy(() => import('../components/Scanner'))
@@ -30,9 +31,12 @@ export default function Einlagern() {
   const sperre = useRef(false)
 
   if (!s) return null
-  const effOrt: OrtWert = ort.ortId ? ort : startPlatz && s.platz.get(startPlatz)
-    ? { ortId: s.platz.get(startPlatz)!.ortId, platzId: startPlatz }
-    : { ortId: s.orte[0]?.id }
+  if (!s.aktuell) return <p className="leer">Wähle oben ein Lager, in das eingelagert werden soll.</p>
+  const startOrt = startPlatz ? s.platz.get(startPlatz)?.ortId : undefined
+  if (startOrt && !imAktuellen(s, startOrt)) return <Wechseln s={s} ortId={startOrt} />
+  const effOrt: OrtWert = ort.ortId && imAktuellen(s, ort.ortId) ? ort : startOrt
+    ? { ortId: startOrt, platzId: startPlatz }
+    : { ortId: meineOrte(s).find((o) => o.typ === 'lager')?.id ?? meineOrte(s)[0]?.id }
   const gewaehlt = artikelId && artikelId !== NEU ? s.art.get(artikelId) : undefined
   const mitSN = artikelId === NEU ? neuMitSN : !!gewaehlt?.mitSeriennummer
   const kategorien = [...new Set(s.artikel.map((a) => a.kategorie).filter(Boolean))] as string[]
@@ -48,11 +52,8 @@ export default function Einlagern() {
       let snPflicht = mitSN
       if (aid === NEU) {
         const name = neuName.trim()
-        const doppelt = await db.artikel.filter((a) => a.name.toLowerCase() === name.toLowerCase()).first()
-        aid = doppelt?.id ?? await db.artikel.add({
-          name, kategorie: neuKategorie.trim() || undefined, mitSeriennummer: neuMitSN, kofferraumMin: 0,
-        })
-        if (doppelt) snPflicht = doppelt.mitSeriennummer
+        aid = await artikelAnlegen({ name, kategorie: neuKategorie.trim() || undefined, mitSeriennummer: neuMitSN })
+        snPflicht = s!.art.get(aid)?.mitSeriennummer ?? neuMitSN
         setArtikelId(aid)
       }
       if (!aid || !effOrt.ortId) return
@@ -78,6 +79,7 @@ export default function Einlagern() {
   return (
     <form onSubmit={speichern} className="formular">
       <h1>Einlagern</h1>
+      <p className="hinweis">in {s.aktuell.name}</p>
       <label>
         Artikel
         <select value={artikelId ?? ''} onChange={(e) => setArtikelId(Number(e.target.value) || undefined)} required>

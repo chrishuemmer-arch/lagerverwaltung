@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, vergleiche, type Eintrag } from '../db'
-import { kofferraumIds, ortText, useStammdaten } from '../lib/hooks'
+import { kofferraumVon, ortText, useStammdaten } from '../lib/hooks'
 import { umlagern } from '../lib/ops'
 import EintragZeile from '../components/EintragZeile'
 
@@ -12,15 +12,20 @@ export default function Kofferraum() {
   const [laeuft, setLaeuft] = useState(false)
   const sperre = useRef(false)
   if (!s || !eintraege) return null
-  const kIds = kofferraumIds(s)
-  const kofferraum = s.orte.find((o) => o.typ === 'kofferraum')
-  if (!kofferraum) return <p className="leer">Kein Ort vom Typ „Kofferraum“ angelegt. <Link to="/orte">Orte verwalten</Link></p>
+  if (!s.aktuell) return <p className="leer">Wähle oben ein Lager.</p>
+  const lagerId = s.aktuell.id
+  const kIds = new Set(s.orte.filter((o) => o.lagerId === lagerId && o.typ === 'kofferraum').map((o) => o.id))
+  const lagerOrte = new Set(s.orte.filter((o) => o.lagerId === lagerId && o.typ !== 'kofferraum').map((o) => o.id))
+  const kofferraum = kofferraumVon(s, lagerId)
+  if (!kofferraum) return <p className="leer">In „{s.aktuell.name}“ gibt es keinen Ort vom Typ „Kofferraum“. <Link to="/orte">Orte verwalten</Link></p>
 
-  const soll = s.artikel.filter((a) => a.kofferraumMin > 0).sort((a, b) => vergleiche(a.name, b.name))
-  const zeilen = soll.map((a) => {
+  const soll = s.soll.filter((x) => x.lagerId === lagerId && s.art.has(x.artikelId))
+    .map((x) => ({ a: s.art.get(x.artikelId)!, min: x.menge })).sort((x, y) => vergleiche(x.a.name, y.a.name))
+  const zeilen = soll.map(({ a, min }) => {
     const ist = eintraege.filter((e) => e.artikelId === a.id && kIds.has(e.ortId)).reduce((n, e) => n + e.menge, 0)
-    const nachschub = eintraege.filter((e) => e.artikelId === a.id && !kIds.has(e.ortId))
-    return { a, ist, fehlt: Math.max(0, a.kofferraumMin - ist), nachschub }
+    const nachschub = eintraege.filter((e) => e.artikelId === a.id && lagerOrte.has(e.ortId))
+    const woanders = eintraege.filter((e) => e.artikelId === a.id && !kIds.has(e.ortId) && !lagerOrte.has(e.ortId))
+    return { a, min, ist, fehlt: Math.max(0, min - ist), nachschub, woanders }
   })
   const fehlend = zeilen.filter((z) => z.fehlt > 0)
   const imKofferraum = eintraege.filter((e) => kIds.has(e.ortId))
@@ -41,6 +46,7 @@ export default function Kofferraum() {
   return (
     <>
       <h1>Kofferraum</h1>
+      <p className="hinweis">{s.aktuell.name}</p>
       {soll.length === 0 ? (
         <p className="leer">Noch keine Mindestmengen festgelegt. Öffne einen <Link to="/artikel">Artikel</Link> und trag ein, wie viele davon immer im Kofferraum sein sollen.</p>
       ) : fehlend.length === 0 ? (
@@ -49,12 +55,12 @@ export default function Kofferraum() {
         <p className="fehler gross-text">{fehlend.length} {fehlend.length === 1 ? 'Artikel fehlt' : 'Artikel fehlen'}</p>
       )}
       <ul className="liste">
-        {zeilen.map(({ a, ist, fehlt, nachschub }) => (
+        {zeilen.map(({ a, min, ist, fehlt, nachschub, woanders }) => (
           <li key={a.id} className={fehlt ? 'karte fehlt' : 'karte'}>
             <div className="eintrag">
               <div>
                 <Link to={`/artikel/${a.id}`}><strong>{a.name}</strong></Link>
-                <small>{ist} von {a.kofferraumMin} an Bord</small>
+                <small>{ist} von {min} an Bord</small>
               </div>
               <span className={fehlt ? 'tag rot' : 'tag gruen'}>{fehlt ? `−${fehlt}` : 'OK'}</span>
             </div>
@@ -69,7 +75,7 @@ export default function Kofferraum() {
                   </li>
                 ))}
               </ul>
-            ) : <p className="hinweis">Kein Nachschub im Lager – nachkaufen!</p>)}
+            ) : <p className="hinweis">{woanders.length ? `Nicht in diesem Lager, aber in: ${[...new Set(woanders.map((e) => ortText(s, e).split(' · ')[0]))].join(', ')}` : 'Kein Nachschub im Lager – nachkaufen!'}</p>)}
           </li>
         ))}
       </ul>

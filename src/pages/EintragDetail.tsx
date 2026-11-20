@@ -2,8 +2,9 @@ import { useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, type Bewegung } from '../db'
-import { ortText, useStammdaten, type Stammdaten } from '../lib/hooks'
-import { entnehmen, umlagern } from '../lib/ops'
+import { imAktuellen, ortText, useStammdaten, type Stammdaten } from '../lib/hooks'
+import { eintragNotiz, entnehmen, umlagern } from '../lib/ops'
+import { Wechseln } from '../components/LagerWahl'
 import OrtWahl, { ProjektWahl, type OrtWert } from '../components/OrtWahl'
 
 export default function EintragDetail() {
@@ -29,6 +30,7 @@ export default function EintragDetail() {
   if (!s || e === undefined) return e === undefined && s ? <p className="leer">Eintrag nicht (mehr) vorhanden. <Link to="/">Zum Bestand</Link></p> : null
   const art = s.art.get(e.artikelId)
   const projekt = e.projektId != null ? s.projekt.get(e.projektId) : undefined
+  const darf = imAktuellen(s, e.ortId)
 
   async function ausfuehren() {
     if (sperre.current) return
@@ -51,8 +53,7 @@ export default function EintragDetail() {
       if (rest <= 0) navigate('/', { replace: true })
     } else if (modus === 'umlagern' && ziel.ortId) {
       await umlagern(e!.id, menge, { ...ziel, ortId: ziel.ortId, projektId: zielProjekt === null ? e!.projektId : zielProjekt || undefined }, notiz)
-      if (!e!.seriennummer && menge < e!.menge) setModus(undefined)
-      else if (!(await db.eintraege.get(e!.id))) navigate('/', { replace: true })
+      if (!(await db.eintraege.get(e!.id))) navigate('/', { replace: true })
     }
     setModus(undefined)
     setNotiz('')
@@ -71,13 +72,13 @@ export default function EintragDetail() {
         <dd>{projekt ? <Link to={`/?projekt=${projekt.id}`}>{projekt.name}</Link> : '–'}</dd>
         <dt>Notiz</dt>
         <dd>
-          {notizBearbeiten === undefined ? (
+          {!darf ? e.notiz || '–' : notizBearbeiten === undefined ? (
             <button type="button" className="link" onClick={() => setNotizBearbeiten(e.notiz ?? '')}>{e.notiz || 'hinzufügen'}</button>
           ) : (
             <span className="suche">
               <input value={notizBearbeiten} onChange={(x) => setNotizBearbeiten(x.target.value)} autoFocus />
               <button type="button" onClick={async () => {
-                await db.eintraege.update(e.id, { notiz: notizBearbeiten.trim() || undefined, geaendert: Date.now() })
+                await eintragNotiz(e.id, notizBearbeiten.trim())
                 setNotizBearbeiten(undefined)
               }}>OK</button>
             </span>
@@ -85,13 +86,14 @@ export default function EintragDetail() {
         </dd>
       </dl>
 
-      {!modus && (
+      {!darf && <Wechseln s={s} ortId={e.ortId} />}
+      {darf && !modus && (
         <div className="zeile">
           <button type="button" className="primaer gross" onClick={() => { setModus('umlagern'); setZiel({ ortId: e.ortId, platzId: e.platzId }); setZielProjekt(null) }}>Umlagern</button>
           <button type="button" className="gross" onClick={() => setModus('entnehmen')}>Entnehmen</button>
         </div>
       )}
-      {modus && (
+      {darf && modus && (
         <div className="formular karte">
           <h2>{modus === 'umlagern' ? 'Umlagern' : 'Entnehmen'}</h2>
           {e.menge > 1 && (
@@ -128,7 +130,7 @@ export function Verlauf({ s, liste }: { s: Stammdaten; liste: Bewegung[] }) {
         <li key={b.id}>
           <small>{new Date(b.zeit).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}</small>
           <span>
-            <strong>{b.typ}</strong> {s.art.get(b.artikelId)?.name} {b.seriennummer ? `(${b.seriennummer})` : `×${b.menge}`}
+            {b.userId && s.profil.get(b.userId) && <>{s.profil.get(b.userId)!.name}: </>}<strong>{b.typ}</strong> {s.art.get(b.artikelId)?.name} {b.seriennummer ? `(${b.seriennummer})` : `×${b.menge}`}
             {b.vonOrtId != null && <> von {ort(b.vonOrtId, b.vonPlatzId)}</>}
             {b.nachOrtId != null && <> nach {ort(b.nachOrtId, b.nachPlatzId)}</>}
             {b.notiz && <em> – {b.notiz}</em>}
