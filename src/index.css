@@ -114,3 +114,10 @@ fieldset { border: 1px dashed var(--rand); border-radius: 8px; display: flex; fl
   .etiketten { grid-template-columns: repeat(4, 1fr); gap: 4mm; }
   .etikett { page-break-inside: avoid; }
 }
+
+.kopf { position: sticky; top: 0; z-index: 5; background: #1f4e79; color: #fff; padding: 8px 12px calc(8px); padding-top: calc(8px + env(safe-area-inset-top)); }
+.kopf label { color: #fff; display: flex; flex-direction: row; align-items: center; gap: 8px; max-width: 720px; margin: 0 auto; font-weight: 600; }
+.kopf select { flex: 1; color: var(--text); background: #fff; min-height: 40px; }
+.kopf.fremd { background: #e67e22; }
+.mitte { max-width: 420px; margin: 0 auto; padding: 48px 16px; display: flex; flex-direction: column; gap: 12px; }
+.ueber { text-align: center; color: var(--grau); margin: 32px 0 8px; display: flex; flex-direction: column; gap: 2px; }

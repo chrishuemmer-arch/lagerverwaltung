@@ -1,9 +1,25 @@
 import Dexie, { type EntityTable } from 'dexie'
 
+// Lokale Kopie der zentralen Supabase-Datenbank. Wird nur von sync.ts beschrieben.
+
 export type OrtTyp = 'lager' | 'kofferraum'
+
+export interface Profil {
+  id: string
+  name: string
+  freigegeben: boolean
+  admin: boolean
+}
+
+export interface Lager {
+  id: number
+  name: string
+  verantwortlich?: string
+}
 
 export interface Ort {
   id: number
+  lagerId: number
   name: string
   typ: OrtTyp
 }
@@ -27,7 +43,12 @@ export interface Artikel {
   name: string
   kategorie?: string
   mitSeriennummer: boolean
-  kofferraumMin: number
+}
+
+export interface Soll {
+  lagerId: number
+  artikelId: number
+  menge: number
 }
 
 export interface Eintrag {
@@ -57,34 +78,32 @@ export interface Bewegung {
   nachPlatzId?: number
   projektId?: number
   notiz?: string
+  userId?: string
 }
 
-export const db = new Dexie('lagerverwaltung') as Dexie & {
+export const db = new Dexie('lager-cache') as Dexie & {
+  profile: EntityTable<Profil, 'id'>
+  lager: EntityTable<Lager, 'id'>
   orte: EntityTable<Ort, 'id'>
   plaetze: EntityTable<Platz, 'id'>
   projekte: EntityTable<Projekt, 'id'>
   artikel: EntityTable<Artikel, 'id'>
+  soll: Dexie.Table<Soll, [number, number]>
   eintraege: EntityTable<Eintrag, 'id'>
   bewegungen: EntityTable<Bewegung, 'id'>
 }
 
 db.version(1).stores({
-  orte: '++id, typ',
-  plaetze: '++id, ortId',
-  projekte: '++id',
-  artikel: '++id, name',
-  eintraege: '++id, artikelId, ortId, platzId, projektId, seriennummer',
-  bewegungen: '++id, zeit, artikelId',
+  profile: 'id',
+  lager: 'id',
+  orte: 'id, lagerId',
+  plaetze: 'id, ortId',
+  projekte: 'id',
+  artikel: 'id, name',
+  soll: '[lagerId+artikelId], lagerId',
+  eintraege: 'id, artikelId, ortId, platzId, projektId, seriennummer',
+  bewegungen: 'id, zeit, artikelId',
 })
-
-db.on('populate', async (tx) => {
-  await tx.table('orte').bulkAdd([
-    { name: 'Container', typ: 'lager' },
-    { name: 'Kofferraum', typ: 'kofferraum' },
-  ])
-})
-
-export const TABELLEN = ['orte', 'plaetze', 'projekte', 'artikel', 'eintraege', 'bewegungen'] as const
 
 export function platzCode(p: Pick<Platz, 'regal' | 'nummer'>): string {
   return p.regal ? `${p.regal}-${p.nummer}` : p.nummer

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, vergleiche } from '../db'
 import { useStammdaten } from '../lib/hooks'
+import { projektAendern, projektAnlegen } from '../lib/ops'
 
 export default function Projekte() {
   const s = useStammdaten()
@@ -17,7 +18,7 @@ export default function Projekte() {
 
   async function neu(ev: FormEvent) {
     ev.preventDefault()
-    if (name.trim()) await db.projekte.add({ name: name.trim() })
+    if (name.trim()) await projektAnlegen(name.trim())
     setName('')
   }
 
@@ -38,8 +39,8 @@ export default function Projekte() {
                 <small>{zaehler.get(p.id) ?? 0} Stück{p.archiviert ? ' · archiviert' : ''}</small>
               </Link>
               <span className="zeile eng">
-                <button type="button" onClick={async () => { const n = prompt('Name', p.name)?.trim(); if (n) await db.projekte.update(p.id, { name: n }) }}>Umbenennen</button>
-                <button type="button" onClick={() => db.projekte.update(p.id, { archiviert: !p.archiviert })}>{p.archiviert ? 'Reaktivieren' : 'Archivieren'}</button>
+                <button type="button" onClick={async () => { const n = prompt('Name', p.name)?.trim(); if (n) await projektAendern(p.id, { name: n }) }}>Umbenennen</button>
+                <button type="button" onClick={() => projektAendern(p.id, { archiviert: !p.archiviert })}>{p.archiviert ? 'Reaktivieren' : 'Archivieren'}</button>
               </span>
             </div>
           </li>
