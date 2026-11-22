@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, vergleiche, type Artikel } from '../db'
-import { useStammdaten } from '../lib/hooks'
-import { artikelLoeschen } from '../lib/ops'
+import { sollMenge, useStammdaten } from '../lib/hooks'
+import { artikelAendern, artikelLoeschen, sollSetzen } from '../lib/ops'
 import EintragZeile from '../components/EintragZeile'
 
 export function ArtikelListe() {
@@ -30,7 +30,7 @@ export function ArtikelListe() {
                 <strong>{a.name}</strong>
                 <small>{a.kategorie ?? 'ohne Kategorie'} · {summen.get(a.id) ?? 0} Stk.{a.mitSeriennummer ? ' · mit SN' : ''}</small>
               </div>
-              {a.kofferraumMin > 0 && <span className="tag">Kofferraum ≥ {a.kofferraumMin}</span>}
+              {sollMenge(s, a.id) > 0 && <span className="tag">Kofferraum ≥ {sollMenge(s, a.id)}</span>}
             </Link>
           </li>
         ))}
@@ -52,7 +52,7 @@ export function ArtikelDetail() {
   const kategorien = [...new Set(s.artikel.map((x) => x.kategorie).filter(Boolean))] as string[]
 
   async function aendern(felder: Partial<Artikel>) {
-    await db.artikel.update(id, felder)
+    await artikelAendern(id, felder)
     setGespeichert(true)
     setTimeout(() => setGespeichert(false), 1200)
   }
@@ -67,10 +67,18 @@ export function ArtikelDetail() {
           <input defaultValue={a.kategorie} list="kat" onBlur={(e) => e.target.value !== (a.kategorie ?? '') && aendern({ kategorie: e.target.value.trim() || undefined })} />
           <datalist id="kat">{kategorien.map((k) => <option key={k} value={k} />)}</datalist>
         </label>
-        <label>
-          Mindestmenge im Kofferraum
-          <input type="number" min={0} defaultValue={a.kofferraumMin} onBlur={(e) => Number(e.target.value) !== a.kofferraumMin && aendern({ kofferraumMin: Math.max(0, Number(e.target.value)) })} />
-        </label>
+        {s.aktuell && (
+          <label>
+            Mindestmenge im Kofferraum ({s.aktuell.name})
+            <input key={s.aktuell.id} type="number" min={0} defaultValue={sollMenge(s, id)} onBlur={async (e) => {
+              const m = Math.max(0, Math.floor(Number(e.target.value)) || 0)
+              if (m === sollMenge(s, id)) return
+              await sollSetzen(s.aktuell!.id, id, m)
+              setGespeichert(true)
+              setTimeout(() => setGespeichert(false), 1200)
+            }} />
+          </label>
+        )}
         <label className="check">
           <input type="checkbox" checked={a.mitSeriennummer} onChange={(e) => aendern({ mitSeriennummer: e.target.checked })} />
           Hat Seriennummern
@@ -83,7 +91,7 @@ export function ArtikelDetail() {
       <button type="button" className="gefahr" onClick={async () => {
         const stk = eintraege.reduce((n, e) => n + e.menge, 0)
         const frage = stk
-          ? `„${a.name}“ komplett löschen? Damit werden auch ${stk} Stk. aus dem Bestand und der Verlauf gelöscht.`
+          ? `„${a.name}“ komplett löschen? Damit werden auch ${stk} Stk. aus dem Bestand aller Lager und der Verlauf gelöscht.`
           : `„${a.name}“ löschen?`
         if (!confirm(frage)) return
         await artikelLoeschen(id)

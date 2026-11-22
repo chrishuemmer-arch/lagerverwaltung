@@ -1,5 +1,5 @@
 import { platzCode, sortierePlaetze } from '../db'
-import type { Stammdaten } from '../lib/hooks'
+import { meineOrte, type Stammdaten } from '../lib/hooks'
 
 export interface OrtWert {
   ortId?: number
@@ -14,7 +14,7 @@ export default function OrtWahl({ s, wert, onChange }: { s: Stammdaten; wert: Or
         Ort
         <select value={wert.ortId ?? ''} onChange={(e) => onChange({ ortId: Number(e.target.value) || undefined })} required>
           <option value="">– wählen –</option>
-          {s.orte.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          {meineOrte(s).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </label>
       <label>

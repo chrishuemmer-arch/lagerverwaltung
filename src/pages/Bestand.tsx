@@ -3,13 +3,10 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, platzCode, vergleiche } from '../db'
 import { useStammdaten } from '../lib/hooks'
-import { letztesBackup } from '../lib/backup'
 import { scanZiel } from '../lib/scan'
 import EintragZeile from '../components/EintragZeile'
 
 const Scanner = lazy(() => import('../components/Scanner'))
-
-const TAG = 24 * 60 * 60 * 1000
 
 export default function Bestand() {
   const s = useStammdaten()
@@ -20,6 +17,7 @@ export default function Bestand() {
   const navigate = useNavigate()
   const projektId = Number(params.get('projekt')) || undefined
   const ortId = Number(params.get('ort')) || undefined
+  const lagerId = Number(params.get('lager')) || undefined
 
   const setFilter = (key: string, v?: number) => {
     const p = new URLSearchParams(params)
@@ -32,7 +30,8 @@ export default function Bestand() {
     if (!s || !eintraege) return []
     const q = suche.trim().toLowerCase()
     return eintraege
-      .filter((e) => (!projektId || e.projektId === projektId) && (!ortId || e.ortId === ortId))
+      .filter((e) => (!projektId || e.projektId === projektId) && (!ortId || e.ortId === ortId)
+        && (!lagerId || s.ort.get(e.ortId)?.lagerId === lagerId))
       .filter((e) => {
         if (!q) return true
         const art = s.art.get(e.artikelId)
@@ -42,20 +41,13 @@ export default function Bestand() {
         return felder.some((f) => f?.toLowerCase().includes(q))
       })
       .sort((a, b) => vergleiche(s.art.get(a.artikelId)?.name ?? '', s.art.get(b.artikelId)?.name ?? ''))
-  }, [s, eintraege, suche, projektId, ortId])
+  }, [s, eintraege, suche, projektId, ortId, lagerId])
 
   if (!s || !eintraege) return null
-  const backup = letztesBackup()
-  const backupFaellig = eintraege.length > 0 && (!backup || Date.now() - backup > 14 * TAG)
   const summe = liste.reduce((n, e) => n + e.menge, 0)
 
   return (
     <>
-      {backupFaellig && (
-        <Link to="/mehr" className="banner">
-          {backup ? `Letztes Backup vor ${Math.floor((Date.now() - backup) / TAG)} Tagen.` : 'Noch kein Backup gemacht.'} Jetzt sichern →
-        </Link>
-      )}
       <div className="suche">
         <input type="search" placeholder="Suchen: Name, SN, Platz, Projekt…" value={suche} onChange={(e) => setSuche(e.target.value)} />
         <button type="button" className="primaer" onClick={() => setScannen(true)}>Scannen</button>
@@ -65,10 +57,16 @@ export default function Bestand() {
           <option value="">Alle Projekte</option>
           {s.projekte.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <select value={ortId ?? ''} onChange={(e) => setFilter('ort', Number(e.target.value))}>
-          <option value="">Alle Orte</option>
-          {s.orte.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        <select value={lagerId ?? ''} onChange={(e) => { const p = new URLSearchParams(params); p.delete('ort'); if (e.target.value) p.set('lager', e.target.value); else p.delete('lager'); setParams(p, { replace: true }) }}>
+          <option value="">Alle Lager</option>
+          {[...s.lager].sort((a, b) => vergleiche(a.name, b.name)).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        {lagerId && (
+          <select value={ortId ?? ''} onChange={(e) => setFilter('ort', Number(e.target.value))}>
+            <option value="">Alle Orte</option>
+            {s.orte.filter((o) => o.lagerId === lagerId).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        )}
       </div>
       <p className="hinweis">{liste.length} Einträge · {summe} Stück</p>
       {eintraege.length === 0 ? (

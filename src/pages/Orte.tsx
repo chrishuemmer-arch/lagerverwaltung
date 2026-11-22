@@ -2,25 +2,29 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, platzCode, sortierePlaetze, vergleiche, type Ort, type OrtTyp } from '../db'
-import { useStammdaten } from '../lib/hooks'
+import { meineOrte, useStammdaten } from '../lib/hooks'
+import { ortAnlegen, ortLoeschen, ortUmbenennen, plaetzeAnlegen, plaetzeLoeschen } from '../lib/ops'
 
 export default function Orte() {
   const s = useStammdaten()
   const [name, setName] = useState('')
   const [typ, setTyp] = useState<OrtTyp>('lager')
   if (!s) return null
+  if (!s.aktuell) return <p className="leer">Wähle oben ein Lager.</p>
+  const lagerId = s.aktuell.id
 
   async function neu(ev: FormEvent) {
     ev.preventDefault()
     if (!name.trim()) return
-    await db.orte.add({ name: name.trim(), typ })
+    await ortAnlegen(lagerId, name.trim(), typ)
     setName('')
   }
 
   return (
     <>
       <h1>Orte &amp; Plätze</h1>
-      {s.orte.map((o) => <OrtKarte key={o.id} ort={o} />)}
+      <p className="hinweis">{s.aktuell.name}</p>
+      {meineOrte(s).map((o) => <OrtKarte key={o.id} ort={o} />)}
       <form onSubmit={neu} className="formular karte">
         <h2>Neuer Ort</h2>
         <div className="zeile">
@@ -63,27 +67,26 @@ function OrtKarte({ ort }: { ort: Ort }) {
     for (let n = von; n <= bis; n++) {
       if (!vorhanden.has(n)) neue.push({ ortId: ort.id, regal: r, nummer: String(n).padStart(breite, '0') })
     }
-    await db.plaetze.bulkAdd(neue)
+    if (neue.length) await plaetzeAnlegen(neue)
     setRegal('')
   }
 
   async function umbenennen() {
     const n = prompt('Neuer Name', ort.name)?.trim()
-    if (n) await db.orte.update(ort.id, { name: n })
+    if (n) await ortUmbenennen(ort.id, n)
   }
 
   async function loeschen() {
     if (belegt!.gesamt) return alert('Ort ist nicht leer – erst umlagern.')
     if (confirm(`„${ort.name}“ mit allen Plätzen löschen?`)) {
-      await db.plaetze.where('ortId').equals(ort.id).delete()
-      await db.orte.delete(ort.id)
+      await ortLoeschen(ort.id)
     }
   }
 
   async function regalLoeschen(r: string) {
     const ps = regale.get(r) ?? []
     if (ps.some((p) => belegt!.m.get(p.id))) return alert('Im Regal liegen noch Sachen – erst umlagern.')
-    if (confirm(`Regal „${r || 'ohne Name'}“ mit ${ps.length} Plätzen löschen?`)) await db.plaetze.bulkDelete(ps.map((p) => p.id))
+    if (confirm(`Regal „${r || 'ohne Name'}“ mit ${ps.length} Plätzen löschen?`)) await plaetzeLoeschen(ps.map((p) => p.id))
   }
 
   return (

@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { platzCode, sortierePlaetze } from '../db'
-import { useStammdaten } from '../lib/hooks'
+import { meineOrte, useStammdaten } from '../lib/hooks'
 import { PLATZ_PREFIX } from '../lib/scan'
 
 export default function Etiketten() {
   const s = useStammdaten()
   const [params, setParams] = useSearchParams()
-  const ortId = Number(params.get('ort')) || s?.orte[0]?.id
+  const ortId = Number(params.get('ort')) || (s && meineOrte(s)[0]?.id)
   const regal = params.get('regal') ?? ''
   const [bilder, setBilder] = useState<Map<number, string>>(new Map())
 
@@ -33,7 +33,7 @@ export default function Etiketten() {
         <h1>QR-Etiketten</h1>
         <div className="zeile">
           <select value={ortId ?? ''} onChange={(e) => setP('ort', e.target.value)}>
-            {s.orte.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+            {meineOrte(s).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
           <select value={regal} onChange={(e) => setP('regal', e.target.value)}>
             <option value="">Alle Regale</option>
@@ -48,7 +48,7 @@ export default function Etiketten() {
           <div key={p.id} className="etikett">
             {bilder.get(p.id) && <img src={bilder.get(p.id)} alt="" />}
             <strong>{platzCode(p)}</strong>
-            <small>{s.ort.get(p.ortId)?.name}</small>
+            <small>{s.lagerMap.get(s.ort.get(p.ortId)?.lagerId ?? 0)?.name} · {s.ort.get(p.ortId)?.name}</small>
           </div>
         ))}
       </div>

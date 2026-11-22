@@ -9,10 +9,14 @@ import Etiketten from './pages/Etiketten'
 import Projekte from './pages/Projekte'
 import { ArtikelDetail, ArtikelListe } from './pages/ArtikelSeiten'
 import Mehr from './pages/Mehr'
+import Anmeldung from './components/Anmeldung'
+import LagerWahl from './components/LagerWahl'
 
 export default function App() {
   return (
+    <Anmeldung>
     <HashRouter>
+      <LagerWahl />
       <main>
         <Routes>
           <Route path="/" element={<Bestand />} />
@@ -36,5 +40,6 @@ export default function App() {
         <NavLink to="/mehr">Mehr</NavLink>
       </nav>
     </HashRouter>
+    </Anmeldung>
   )
 }

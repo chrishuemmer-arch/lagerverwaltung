@@ -1,8 +1,6 @@
-import { db, normSN, type Eintrag } from '../db'
-
-function pruefeMenge(menge: number) {
-  if (!Number.isInteger(menge) || menge < 1) throw new Error('Menge muss eine ganze Zahl ab 1 sein')
-}
+import type { Artikel, OrtTyp } from '../db'
+import { pruefe, supabase } from './supabase'
+import { synchronisieren } from './sync'
 
 interface Ziel {
   ortId: number
@@ -10,107 +8,71 @@ interface Ziel {
   projektId?: number
 }
 
-export async function einlagern(daten: {
-  artikelId: number
-  menge: number
-  seriennummer?: string
-  notiz?: string
-} & Ziel): Promise<number> {
-  return db.transaction('rw', db.eintraege, db.bewegungen, db.artikel, async () => {
-    const artikel = await db.artikel.get(daten.artikelId)
-    if (!artikel) throw new Error('Artikel nicht gefunden')
-    const sn = daten.seriennummer ? normSN(daten.seriennummer) || undefined : undefined
-    if (artikel.mitSeriennummer && !sn) throw new Error('Seriennummer fehlt')
-    if (!sn) pruefeMenge(daten.menge)
-    let id: number
-    if (sn) {
-      const vorhanden = await db.eintraege.where('seriennummer').equals(sn).first()
-      if (vorhanden) throw new Error(`Seriennummer ${sn} ist schon im Bestand`)
-      id = await db.eintraege.add({
-        artikelId: daten.artikelId, ortId: daten.ortId, platzId: daten.platzId,
-        projektId: daten.projektId, seriennummer: sn, menge: 1, notiz: daten.notiz || undefined,
-        geaendert: Date.now(),
-      })
-    } else {
-      const gleich = await findeGleichen(daten.artikelId, daten)
-      if (gleich) {
-        await db.eintraege.update(gleich.id, { menge: gleich.menge + daten.menge, geaendert: Date.now() })
-        id = gleich.id
-      } else {
-        id = await db.eintraege.add({
-          artikelId: daten.artikelId, ortId: daten.ortId, platzId: daten.platzId,
-          projektId: daten.projektId, menge: daten.menge, notiz: daten.notiz || undefined,
-          geaendert: Date.now(),
-        })
-      }
-    }
-    await db.bewegungen.add({
-      zeit: Date.now(), typ: 'einlagern', artikelId: daten.artikelId, menge: sn ? 1 : daten.menge,
-      seriennummer: sn, nachOrtId: daten.ortId, nachPlatzId: daten.platzId, projektId: daten.projektId,
-      notiz: daten.notiz || undefined,
-    })
-    return id
-  })
+async function rpc<T = unknown>(fn: string, args: Record<string, unknown>): Promise<T> {
+  const r = pruefe(await supabase.rpc(fn, args))
+  await synchronisieren()
+  return r as T
 }
 
-async function findeGleichen(artikelId: number, z: Ziel, ausser?: number): Promise<Eintrag | undefined> {
-  const liste = await db.eintraege.where('artikelId').equals(artikelId).toArray()
-  return liste.find((e) => e.id !== ausser && !e.seriennummer && e.ortId === z.ortId
-    && (e.platzId ?? null) === (z.platzId ?? null) && (e.projektId ?? null) === (z.projektId ?? null))
+async function fertig(r: { error: { message: string } | null }) {
+  pruefe({ data: null, error: r.error })
+  await synchronisieren()
 }
 
-export async function entnehmen(eintragId: number, menge: number, notiz?: string) {
-  pruefeMenge(menge)
-  await db.transaction('rw', db.eintraege, db.bewegungen, async () => {
-    const e = await db.eintraege.get(eintragId)
-    if (!e) throw new Error('Eintrag nicht gefunden')
-    const m = Math.min(menge, e.menge)
-    if (m >= e.menge) await db.eintraege.delete(e.id)
-    else await db.eintraege.update(e.id, { menge: e.menge - m, geaendert: Date.now() })
-    await db.bewegungen.add({
-      zeit: Date.now(), typ: 'entnehmen', artikelId: e.artikelId, menge: m, seriennummer: e.seriennummer,
-      vonOrtId: e.ortId, vonPlatzId: e.platzId, projektId: e.projektId, notiz: notiz || undefined,
-    })
+export const einlagern = (d: { artikelId: number; menge: number; seriennummer?: string; notiz?: string } & Ziel) =>
+  rpc<number>('einlagern', {
+    p_artikel: d.artikelId, p_ort: d.ortId, p_menge: d.menge, p_seriennummer: d.seriennummer ?? null,
+    p_platz: d.platzId ?? null, p_projekt: d.projektId ?? null, p_notiz: d.notiz || null,
   })
+
+export const entnehmen = (eintragId: number, menge: number, notiz?: string) =>
+  rpc('entnehmen', { p_eintrag: eintragId, p_menge: menge, p_notiz: notiz || null })
+
+export const umlagern = (eintragId: number, menge: number, z: Ziel, notiz?: string) =>
+  rpc('umlagern', {
+    p_eintrag: eintragId, p_menge: menge, p_ort: z.ortId, p_platz: z.platzId ?? null,
+    p_projekt: z.projektId ?? null, p_notiz: notiz || null,
+  })
+
+export const lagerAnlegen = (name: string) => rpc<number>('lager_anlegen', { p_name: name })
+
+export async function artikelAnlegen(a: { name: string; kategorie?: string; mitSeriennummer: boolean }): Promise<number> {
+  const vorhanden = pruefe(await supabase.from('artikel').select('id, mit_seriennummer').ilike('name', a.name.replace(/[%_\\]/g, '\\$&')).limit(1))
+  if (vorhanden.length) return vorhanden[0].id
+  const r = pruefe(await supabase.from('artikel').insert({ name: a.name, kategorie: a.kategorie ?? null, mit_seriennummer: a.mitSeriennummer }).select('id').single())
+  await synchronisieren()
+  return r.id
 }
 
-export async function umlagern(eintragId: number, menge: number, ziel: Ziel, notiz?: string) {
-  pruefeMenge(menge)
-  await db.transaction('rw', db.eintraege, db.bewegungen, async () => {
-    const e = await db.eintraege.get(eintragId)
-    if (!e) throw new Error('Eintrag nicht gefunden')
-    const m = Math.min(menge, e.menge)
-    if (e.seriennummer || m >= e.menge) {
-      const gleich = e.seriennummer ? undefined : await findeGleichen(e.artikelId, ziel, e.id)
-      if (gleich) {
-        await db.eintraege.update(gleich.id, { menge: gleich.menge + e.menge, geaendert: Date.now() })
-        await db.eintraege.delete(e.id)
-      } else {
-        await db.eintraege.update(e.id, {
-          ortId: ziel.ortId, platzId: ziel.platzId, projektId: ziel.projektId, geaendert: Date.now(),
-        })
-      }
-    } else {
-      await db.eintraege.update(e.id, { menge: e.menge - m, geaendert: Date.now() })
-      const gleich = await findeGleichen(e.artikelId, ziel)
-      if (gleich) await db.eintraege.update(gleich.id, { menge: gleich.menge + m, geaendert: Date.now() })
-      else await db.eintraege.add({
-        artikelId: e.artikelId, ortId: ziel.ortId, platzId: ziel.platzId, projektId: ziel.projektId,
-        menge: m, notiz: e.notiz, geaendert: Date.now(),
-      })
-    }
-    await db.bewegungen.add({
-      zeit: Date.now(), typ: 'umlagern', artikelId: e.artikelId, menge: m, seriennummer: e.seriennummer,
-      vonOrtId: e.ortId, vonPlatzId: e.platzId, nachOrtId: ziel.ortId, nachPlatzId: ziel.platzId,
-      projektId: ziel.projektId, notiz: notiz || undefined,
-    })
-  })
-}
+export const artikelAendern = async (id: number, f: Partial<Omit<Artikel, 'id'>>) => fertig(await supabase.from('artikel').update({
+  ...('name' in f && { name: f.name }), ...('kategorie' in f && { kategorie: f.kategorie ?? null }),
+  ...('mitSeriennummer' in f && { mit_seriennummer: f.mitSeriennummer }),
+}).eq('id', id))
 
-export async function artikelLoeschen(artikelId: number) {
-  await db.transaction('rw', db.artikel, db.eintraege, db.bewegungen, async () => {
-    await db.eintraege.where('artikelId').equals(artikelId).delete()
-    await db.bewegungen.where('artikelId').equals(artikelId).delete()
-    await db.artikel.delete(artikelId)
-  })
-}
+export const artikelLoeschen = async (id: number) => fertig(await supabase.from('artikel').delete().eq('id', id))
+
+export const sollSetzen = async (lagerId: number, artikelId: number, menge: number) => fertig(menge > 0
+  ? await supabase.from('kofferraum_soll').upsert({ lager_id: lagerId, artikel_id: artikelId, menge })
+  : await supabase.from('kofferraum_soll').delete().eq('lager_id', lagerId).eq('artikel_id', artikelId))
+
+export const eintragNotiz = async (id: number, notiz?: string) =>
+  fertig(await supabase.from('eintraege').update({ notiz: notiz || null, geaendert: new Date().toISOString() }).eq('id', id))
+
+export const ortAnlegen = async (lagerId: number, name: string, typ: OrtTyp) =>
+  fertig(await supabase.from('orte').insert({ lager_id: lagerId, name, typ }))
+export const ortUmbenennen = async (id: number, name: string) => fertig(await supabase.from('orte').update({ name }).eq('id', id))
+export const ortLoeschen = async (id: number) => fertig(await supabase.from('orte').delete().eq('id', id))
+
+export const plaetzeAnlegen = async (neue: { ortId: number; regal: string; nummer: string }[]) =>
+  fertig(await supabase.from('plaetze').insert(neue.map((p) => ({ ort_id: p.ortId, regal: p.regal, nummer: p.nummer }))))
+export const plaetzeLoeschen = async (ids: number[]) => fertig(await supabase.from('plaetze').delete().in('id', ids))
+export const platzNotiz = async (id: number, notiz?: string) => fertig(await supabase.from('plaetze').update({ notiz: notiz || null }).eq('id', id))
+
+export const projektAnlegen = async (name: string) => fertig(await supabase.from('projekte').insert({ name }))
+export const projektAendern = async (id: number, f: { name?: string; archiviert?: boolean }) =>
+  fertig(await supabase.from('projekte').update(f).eq('id', id))
+
+export const lagerUmbenennen = async (id: number, name: string) => fertig(await supabase.from('lager').update({ name }).eq('id', id))
+
+export const profilAendern = async (id: string, f: { name?: string; freigegeben?: boolean; admin?: boolean }) =>
+  fertig(await supabase.from('profile').update(f).eq('id', id))
